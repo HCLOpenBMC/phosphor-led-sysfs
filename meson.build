@@ -10,6 +10,11 @@ project(
     ]
 )
 
+conf_data = configuration_data()
+conf_data.set_quoted('BUSNAME', 'xyz.openbmc_project.LED.Controller')
+conf_data.set_quoted('OBJPATH', '/xyz/openbmc_project/led/physical')
+conf_data.set_quoted('DEVPATH', '/sys/class/leds/')
+
 sdbusplus_dep = dependency('sdbusplus')
 phosphor_dbus_interfaces_dep = dependency('phosphor-dbus-interfaces')
 
@@ -17,6 +22,11 @@ deps = [
     sdbusplus_dep,
     phosphor_dbus_interfaces_dep,
 ]
+
+
+configure_file(output: 'config.h',
+    configuration: conf_data
+)
 
 sources = [
     'argument.cpp',

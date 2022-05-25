@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "config.h"
 #include "argument.hpp"
 #include "physical.hpp"
 #include "sysfs.hpp"
@@ -24,6 +25,7 @@
 #include <iostream>
 #include <string>
 
+#if 0
 static void ExitWithError(const char* err, char** argv)
 {
     phosphor::led::ArgumentParser::usage(argv);
@@ -31,6 +33,7 @@ static void ExitWithError(const char* err, char** argv)
     std::cerr << "ERROR: " << err << std::endl;
     exit(-1);
 }
+#endif
 
 struct LedDescr
 {
@@ -79,6 +82,79 @@ std::string getDbusName(const LedDescr& ledDescr)
     return boost::join(words, "_");
 }
 
+void ledEventHandle(sdbusplus::bus::bus& bus)
+{
+std::cerr << " In led event handle \n";
+
+    std::string name = "group1:blue:power1";
+
+    auto path = DEVPATH + name;
+
+    std::cerr << " Path : " << path << "\n";
+
+    // Convert to lowercase just in case some are not and that
+    // we follow lowercase all over
+    std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+
+    // LED names may have a hyphen and that would be an issue for
+    // dbus paths and hence need to convert them to underscores.
+    std::replace(name.begin(), name.end(), '-', '_');
+
+    // Convert LED name in sysfs into DBus name
+    LedDescr ledDescr;
+    getLedDescr(name, ledDescr);
+    name = getDbusName(ledDescr);
+
+    std::cerr << " Name  : " << name << "\n";
+
+    // Unique bus name representing a single LED.
+    auto objPath = std::string(OBJPATH) + '/' + name;
+
+    std::cerr << " Obj path : " << objPath << "\n";
+
+    // Add systemd object manager.
+    sdbusplus::server::manager::manager(bus, objPath.c_str());
+
+    std::cerr << " After manager \n";
+
+    // Create the Physical LED objects for directing actions.
+    // Need to save this else sdbusplus destructor will wipe this off.
+    phosphor::led::SysfsLed sled{path};
+
+    std::cerr << " After sled path \n";
+
+    phosphor::led::Physical led(bus, objPath, sled, ledDescr.color);
+
+    std::cerr << " After physical led \n";
+}
+
+int main()
+{
+
+std::cerr << " In main \n";
+
+    // Get a handle to system dbus.
+    auto bus = sdbusplus::bus::new_default();
+
+    ledEventHandle(bus);
+
+    /** @brief Claim the bus */
+    bus.request_name(BUSNAME);
+
+//    ledEventHandle(bus);
+
+    /** @brief Wait for client requests */
+    while (true)
+    {
+        // Handle dbus message / signals discarding unhandled
+        bus.process_discard();
+        bus.wait();
+    }
+
+    return 0;
+}
+
+#if 0
 int main(int argc, char** argv)
 {
     namespace fs = std::filesystem;
@@ -154,3 +230,4 @@ int main(int argc, char** argv)
     }
     return 0;
 }
+#endif
