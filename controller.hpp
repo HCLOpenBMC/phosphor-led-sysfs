@@ -22,7 +22,7 @@ static constexpr auto objectPath = "/xyz/openbmc_project/led/physical";
 static constexpr auto devPath = "/sys/class/leds/";
 
 static constexpr const char* interface =
-    "xyz.openbmc_project.Configuration.SysfsLed";
+    "xyz.openbmc_project.Configuration.Led";
 static constexpr const char* entityService =
     "xyz.openbmc_project.EntityManager";
 
@@ -37,21 +37,22 @@ class Controller
     Controller() = delete;
     ~Controller() = default;
 
-    Controller(sdbusplus::bus_t& bus) : bus(bus)
-    {
-        interfacesAdded(bus);
-    }
+    explicit Controller(sdbusplus::bus_t& bus) :
+        bus(bus), match(bus,
+                        sdbusplus::bus::match::rules::interfacesAdded() +
+                            sdbusplus::bus::match::rules::sender(entityService),
+                        std::bind(&Controller::interfacesAddedHandler, this,
+                                  std::placeholders::_1))
+    {}
 
   private:
     sdbusplus::bus_t& bus;
 
-    std::vector<std::unique_ptr<sdbusplus::bus::match_t>> matches;
+    sdbusplus::bus::match_t match;
 
-    void interfacesAdded(sdbusplus::bus_t& bus);
+    void interfacesAddedHandler(sdbusplus::message_t& message);
 
-    void getManagedObjects(sdbusplus::message_t& message);
-
-    void createLEDPath(std::string& ledName);
+    void createLEDPath(const std::string& ledName);
 };
 
 } // namespace led

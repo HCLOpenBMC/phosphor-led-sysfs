@@ -20,15 +20,12 @@
 #include "sysfs.hpp"
 
 #include <boost/algorithm/string.hpp>
-#include <sdeventplus/event.hpp>
 
 #include <algorithm>
 #include <iostream>
 #include <string>
 
-boost::container::flat_map<std::string,
-                           std::unique_ptr<phosphor::led::Physical>>
-    leds;
+std::unordered_map<std::string, std::shared_ptr<phosphor::led::Physical>> leds;
 
 struct LedDescr
 {
@@ -83,30 +80,13 @@ namespace phosphor
 namespace led
 {
 
-void Controller::interfacesAdded(sdbusplus::bus_t& bus)
-{
-    auto eventHandler = [&](sdbusplus::message_t& message) {
-        if (message.is_method_error())
-        {
-            std::cerr << "callback method error\n";
-            return;
-        }
-        getManagedObjects(message);
-    };
-
-    auto match = std::make_unique<sdbusplus::bus::match_t>(
-        static_cast<sdbusplus::bus_t&>(bus),
-        sdbusplus::bus::match::rules::interfacesAdded() +
-            sdbusplus::bus::match::rules::sender(entityService),
-        eventHandler);
-    matches.emplace_back(std::move(match));
-}
-
-void Controller::getManagedObjects(sdbusplus::message_t& message)
+void Controller::interfacesAddedHandler(sdbusplus::message_t& message)
 {
     sdbusplus::message::object_path path;
     LedData interfaces;
     message.read(path, interfaces);
+
+//     auto [path, interfaces] = message.unpack<paths, LedData>();
 
     if (!interfaces.contains(interface))
     {
@@ -115,18 +95,22 @@ void Controller::getManagedObjects(sdbusplus::message_t& message)
 
     const auto& entry = interfaces.at(interface);
 
-    auto findName = entry.find("Name");
-    std::string function = std::get<std::string>(findName->second);
-
-    std::string deviceName = function;
-    auto findClass = entry.find("Class");
-    if (findClass != entry.end())
+    const auto& findName = entry.find("DeviceName");
+    if (findName == entry.end())
     {
-        deviceName = std::get<std::string>(findClass->second);
+        return;
+    }
+    std::string deviceName = std::get<std::string>(findName->second);
+
+    std::string function;
+    const auto& findFunction = entry.find("Function");
+    if (findFunction != entry.end())
+    {
+        function = std::get<std::string>(findFunction->second);
     }
 
     std::string color;
-    auto findColor = entry.find("Name1");
+    const auto& findColor = entry.find("Color");
     if (findColor != entry.end())
     {
         color = std::get<std::string>(findColor->second);
@@ -136,22 +120,17 @@ void Controller::getManagedObjects(sdbusplus::message_t& message)
     createLEDPath(sysfsName);
 }
 
-void Controller::createLEDPath(std::string& ledName)
+void Controller::createLEDPath(const std::string& ledName)
 {
     std::string name = ledName;
 
-    // LED names may have a hyphen and that would be an issue for
-    // dbus paths and hence need to convert them to underscores.
-    std::replace(name.begin(), name.end(), '/', '-');
     std::string path = devPath + name;
 
-    // Convert to lowercase just in case some are not and that
-    // we follow lowercase all over
-    std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-
-    // LED names may have a hyphen and that would be an issue for
-    // dbus paths and hence need to convert them to underscores.
-    std::replace(name.begin(), name.end(), '-', '_');
+    if (!std::filesystem::exists(fs::path(path)))
+    {
+        std::cerr << "No such directory " << path << "\n";
+        return;
+    }
 
     // Convert LED name in sysfs into DBus name
     LedDescr ledDescr;
@@ -159,37 +138,24 @@ void Controller::createLEDPath(std::string& ledName)
     name = getDbusName(ledDescr);
 
     // Unique path name representing a single LED.
-    std::string objPath =
-        std::string(objectPath) + '/' + ledDescr.devicename + '/' + name;
+    sdbusplus::message::object_path objPath = std::string(objectPath);
+    objPath /= ledDescr.devicename;
+    objPath /= name;
 
-    // Create the Physical LED objects for directing actions.
-    // Need to save this else sdbusplus destructor will wipe this off.
-    if (!std::filesystem::exists(fs::path(path)))
-    {
-        std::cerr << "No such directory " << path << "\n";
-        return;
-    }
-
-    auto& physical = leds[objPath];
-    physical = std::make_unique<phosphor::led::Physical>(
-        bus, objPath, fs::path(path), ledDescr.color);
-
-    //    physical->setInitialState();
-    //    physical->setLedColor(ledDescr.color);
+    leds.emplace(objPath, std::make_shared<phosphor::led::Physical>(
+                              bus, objPath, fs::path(path), ledDescr.color));
 }
 } // namespace led
 } // namespace phosphor
 
 int main()
 {
-    // Get a default event loop
-    auto event = sdeventplus::Event::get_default();
-
     // Get a handle to system dbus
     auto bus = sdbusplus::bus::new_default();
 
     // Add the ObjectManager interface
-    sdbusplus::server::manager::manager objManager(bus, "/");
+    sdbusplus::server::manager::manager objManager(bus,
+                                                   "/xyz/openbmc_project/led");
 
     // Create an led controller object
     phosphor::led::Controller controller(bus);
@@ -197,9 +163,12 @@ int main()
     // Request service bus name
     bus.request_name(busName);
 
-    // Attach the bus to sd_event to service user requests
-    bus.attach_event(event.get(), SD_EVENT_PRIORITY_NORMAL);
-    event.loop();
+    while (true)
+    {
+        // Handle dbus message / signals discarding unhandled
+        bus.process_discard();
+        bus.wait();
+    }
 
     return 0;
 }

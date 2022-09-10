@@ -12,12 +12,10 @@ project(
 
 sdbusplus_dep = dependency('sdbusplus')
 phosphor_dbus_interfaces_dep = dependency('phosphor-dbus-interfaces')
-sdeventplus_dep = dependency('sdeventplus')
 
 deps = [
     sdbusplus_dep,
     phosphor_dbus_interfaces_dep,
-    sdeventplus_dep,
 ]
 
 sources = [
