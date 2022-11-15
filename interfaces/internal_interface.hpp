@@ -58,6 +58,7 @@ class InternalInterface
     static constexpr auto interface = "xyz.openbmc_project.Led.Sysfs.Internal";
 
   private:
+    sdbusplus::bus_t& bus;
     /**
      *  @brief Systemd bus callback for the AddLed method.
      */
@@ -85,6 +86,8 @@ class InternalInterface
      */
 
     sdbusplus::server::interface_t serverInterface;
+
+    void createLEDPath(const std::string& ledName);
 };
 
 } // namespace interface

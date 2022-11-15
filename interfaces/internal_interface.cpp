@@ -26,19 +26,23 @@ namespace interface
 {
 
 InternalInterface::InternalInterface(sdbusplus::bus_t& bus, const char* path) :
-    serverInterface(bus, path, interface, vtable, this)
+    bus(bus), serverInterface(bus, path, interface, vtable, this)
 {}
 
 void InternalInterface::addLed(std::string name)
 {
     // Need to implement function to create a dbus path.
     lg2::error("Unable to add LED - {NAME}", "NAME", name);
+
+    createLEDPath(name);
 }
 
 void InternalInterface::removeLed(std::string name)
 {
     // Need to implement function to create a dbus path.
     lg2::error("Unable to remove LED - {NAME}", "NAME", name);
+
+    createLEDPath(name);
 }
 
 int InternalInterface::addLedConfigure(sd_bus_message* msg, void* context,
