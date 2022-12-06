@@ -49,7 +49,7 @@ class Physical : public PhysicalIfaces
      */
 
     Physical(sdbusplus::bus_t& bus, const std::string& objPath,
-             std::unique_ptr<phosphor::led::SysfsLed>&& led,
+             std::unique_ptr<phosphor::led::SysfsLed> led,
              const std::string& color = "") :
         PhysicalIfaces(bus, objPath.c_str(),
                        PhysicalIfaces::action::defer_emit),

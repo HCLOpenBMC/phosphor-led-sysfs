@@ -26,15 +26,82 @@ namespace interface
 {
 
 InternalInterface::InternalInterface(sdbusplus::bus_t& bus, const char* path) :
-    bus(bus), serverInterface(bus, path, interface, vtable, this)
+    bus(bus), serverInterface(bus, path, INTERFACE, vtable, this)
 {}
 
-void InternalInterface::addLed(std::string name)
+/** @brief parse LED name in sysfs
+ *  Parse sysfs LED name in format "devicename:colour:function"
+ *  or "devicename:colour" or "devicename" and sets corresponding
+ *  fields in LedDescr struct.
+ *
+ *  @param[in] name      - LED name in sysfs
+ *  @param[out] ledDescr - LED description
+ */
+void InternalInterface::getLedDescr(const std::string& name, LedDescr& ledDescr)
+{
+    std::vector<std::string> words;
+    boost::split(words, name, boost::is_any_of(":"));
+    try
+    {
+        ledDescr.devicename = words.at(0);
+        ledDescr.color = words.at(1);
+        ledDescr.function = words.at(2);
+    }
+    catch (const std::out_of_range&)
+    {
+        return;
+    }
+}
+
+/** @brief generates LED DBus name from LED description
+ *
+ *  @param[in] name      - LED description
+ *  @return              - DBus LED name
+ */
+std::string InternalInterface::getDbusName(const LedDescr& ledDescr)
+{
+    std::vector<std::string> words;
+    words.emplace_back(ledDescr.devicename);
+    if (!ledDescr.function.empty())
+        words.emplace_back(ledDescr.function);
+    if (!ledDescr.color.empty())
+        words.emplace_back(ledDescr.color);
+    return boost::join(words, "_");
+}
+
+void InternalInterface::createLEDPath(const std::string& ledName)
+{
+    std::string name = ledName;
+
+    std::string path = DEVPATH + name;
+
+    if (!std::filesystem::exists(fs::path(path)))
+    {
+        lg2::error("No such directory {PATH}", "PATH", path);
+        return;
+    }
+
+    // Convert LED name in sysfs into DBus name
+    LedDescr ledDescr;
+    getLedDescr(name, ledDescr);
+    name = getDbusName(ledDescr);
+
+    // Unique path name representing a single LED.
+    sdbusplus::message::object_path objPath = std::string(OBJPATH);
+    objPath /= name;
+
+    auto sled = std::make_unique<phosphor::led::SysfsLed>(fs::path(path));
+
+    leds.emplace(objPath, std::make_unique<phosphor::led::Physical>(
+                              bus, objPath, std::move(sled), ledDescr.color));
+}
+
+void InternalInterface::addLED(const std::string& name)
 {
     createLEDPath(name);
 }
 
-void InternalInterface::removeLed(std::string name)
+void InternalInterface::removeLED(const std::string& name)
 {
     createLEDPath(name);
 }
@@ -54,7 +121,7 @@ int InternalInterface::addLedConfigure(sd_bus_message* msg, void* context,
         auto ledName = message.unpack<std::string>();
 
         auto self = static_cast<InternalInterface*>(context);
-        self->addLed(ledName);
+        self->addLED(ledName);
 
         auto reply = message.new_method_return();
         reply.method_return();
@@ -82,7 +149,7 @@ int InternalInterface::removeLedConfigure(sd_bus_message* msg, void* context,
         auto ledName = message.unpack<std::string>();
 
         auto self = static_cast<InternalInterface*>(context);
-        self->removeLed(ledName);
+        self->removeLED(ledName);
 
         auto reply = message.new_method_return();
         reply.method_return();
@@ -98,9 +165,9 @@ int InternalInterface::removeLedConfigure(sd_bus_message* msg, void* context,
 const sdbusplus::vtable::vtable_t InternalInterface::vtable[] = {
     sdbusplus::vtable::start(),
     // AddLed method takes a string parameter and returns void
-    sdbusplus::vtable::method("AddLed", "s", "", addLedConfigure),
+    sdbusplus::vtable::method("AddLED", "s", "", addLedConfigure),
     // RemoveLed method takes a string parameter and returns void
-    sdbusplus::vtable::method("RemoveLed", "s", "", removeLedConfigure),
+    sdbusplus::vtable::method("RemoveLED", "s", "", removeLedConfigure),
     sdbusplus::vtable::end()};
 
 } // namespace interface

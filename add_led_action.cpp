@@ -1,25 +1,20 @@
 #include "argument.hpp"
+#include "interfaces/internal_interface.hpp"
 
 #include <phosphor-logging/lg2.hpp>
 #include <sdbusplus/bus.hpp>
 
-constexpr auto ledConnection = "xyz.openbmc_project.LED.Controller";
-constexpr auto ledPath = "/xyz/openbmc_project/led";
-constexpr auto ledPresenceInterface = "xyz.openbmc_project.Led.Sysfs.Internal";
-constexpr auto ledAddMethod = "AddLed";
-constexpr auto ledClassRoot = "/sys/class/leds/";
-
 std::string rootPathVerify(std::string path)
 {
     int pos = 0;
-    int index = path.find(ledClassRoot, pos);
+    int index = path.find(DEVPATH, pos);
 
     if (index != 0)
     {
         lg2::error("Invalid sys path - {PATH}", "PATH", path);
         throw std::invalid_argument("Invalid argument");
     }
-    std::string led = path.substr(strlen(ledClassRoot));
+    std::string led = path.substr(strlen(DEVPATH));
     return led;
 }
 
@@ -28,8 +23,8 @@ void addLed(std::string ledName)
     try
     {
         auto bus = sdbusplus::bus::new_default();
-        auto method = bus.new_method_call(ledConnection, ledPath,
-                                          ledPresenceInterface, ledAddMethod);
+        auto method =
+            bus.new_method_call(BUSNAME, ROOTPATH, INTERFACE, LEDADDMETHOD);
         method.append(ledName);
         bus.call(method);
     }
@@ -58,9 +53,11 @@ int main(int argc, char* argv[])
 
     // Parse out Path argument.
     auto path = std::move((options)["path"]);
+
     if (path == phosphor::led::ArgumentParser::empty_string)
     {
         phosphor::led::ArgumentParser::usage(argv);
+
         lg2::error("Argument parser error : Path not specified");
         throw std::invalid_argument("Invalid argument");
     }
