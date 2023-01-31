@@ -90,6 +90,11 @@ void InternalInterface::createLEDPath(const std::string& ledName)
     sdbusplus::message::object_path objPath = std::string(OBJPATH);
     objPath /= name;
 
+    if (leds.contains(objPath))
+    {
+        return;
+    }
+
     auto sled = std::make_unique<phosphor::led::SysfsLed>(fs::path(path));
 
     leds.emplace(objPath, std::make_unique<phosphor::led::Physical>(
